@@ -8,28 +8,36 @@ from PyQt5.QtWidgets import (QApplication, QFileDialog, QFrame, QHBoxLayout,
                              QListView, QListWidget, QListWidgetItem, QMainWindow, QMessageBox,
                              QSizePolicy, QWidget)
 
-puzzle_size = 300  # размер пазла (по умолчанию 400x400)
-puzzle_rows = 3  # количество строк (по умолчанию 5)
-puzzle_cols = 3  # количество столбцов (по умолчанию 5)
-pieces_quantity = puzzle_rows * puzzle_cols  # количество кусочков пазла (по умолчанию 25)
-piece_size = round(((puzzle_size ** 2) / pieces_quantity) ** 0.5)  # сторона кусочка пазла (по умолчанию 80x80)
+puzzle_image_width = 0
+puzzle_image_height = 0
+pieces_quantity = 0
+piece_image_width = 0
+piece_image_height = 0
+
+
+def target_square(position):
+    return QRect(position.x() // piece_image_width * piece_image_width,
+                 position.y() // piece_image_height * piece_image_height, piece_image_width,
+                 piece_image_height)
 
 
 class PuzzleWidget(QWidget):
     puzzleCompleted = pyqtSignal()
 
-    def __init__(self, parent=None):
+    # def __init__(self, parent=None, aaa=400, bbb=400):
+    def __init__(self, parent, aaa, bbb):
         super(PuzzleWidget, self).__init__(parent)
+        self.hightlightedRect = None
         self.piece_pixel_maps = []
         self.piece_rect_list = []
         self.piece_locations = []
         self.highlightedRect = QRect()
         self.inPlace = 0
         self.setAcceptDrops(True)
-        self.setMinimumSize(puzzle_size, puzzle_size)
-        self.setMaximumSize(puzzle_size, puzzle_size)
+        self.setMinimumSize(aaa, bbb)
+        self.setMaximumSize(aaa, bbb)
 
-    def clear(self): # очистить поле
+    def clear(self):
         self.piece_locations = []
         self.piece_pixel_maps = []
         self.piece_rect_list = []
@@ -37,23 +45,23 @@ class PuzzleWidget(QWidget):
         self.inPlace = 0
         self.update()
 
-    def dragEnterEvent(self, event): # кусочек в певрый раз перетаскивают на игровое поле
+    def dragEnterEvent(self, event):
         if event.mimeData().hasFormat('image/x-puzzle-piece'):
             event.accept()
         else:
             event.ignore()
 
-    def dragLeaveEvent(self, event): # кусочек убирают из игрового поля
+    def dragLeaveEvent(self, event):
         update_rect = self.highlightedRect
         self.highlightedRect = QRect()
         self.update(update_rect)
         event.accept()
 
-    def dragMoveEvent(self, event): #кусочек перетаскивается на другое место в игровом поле
-        update_rect = self.highlightedRect.united(self.target_square(event.pos()))
+    def dragMoveEvent(self, event):
+        update_rect = self.highlightedRect.united(target_square(event.pos()))
         if event.mimeData().hasFormat('image/x-puzzle-piece') and self.find_piece(
-                self.target_square(event.pos())) == -1:
-            self.highlightedRect = self.target_square(event.pos())
+                target_square(event.pos())) == -1:
+            self.highlightedRect = target_square(event.pos())
             event.setDropAction(Qt.MoveAction)
             event.accept()
         else:
@@ -61,12 +69,12 @@ class PuzzleWidget(QWidget):
             event.ignore()
         self.update(update_rect)
 
-    def dropEvent(self, event): #паззл после перетаскивания опускается на игровое поле
+    def dropEvent(self, event):
         if event.mimeData().hasFormat('image/x-puzzle-piece') and self.find_piece(
-                self.target_square(event.pos())) == -1:
+                target_square(event.pos())) == -1:
             piece_data = event.mimeData().data('image/x-puzzle-piece')
             data_stream = QDataStream(piece_data, QIODevice.ReadOnly)
-            square = self.target_square(event.pos())
+            square = target_square(event.pos())
             pixmap = QPixmap()
             location = QPoint()
             data_stream >> pixmap >> location
@@ -77,7 +85,7 @@ class PuzzleWidget(QWidget):
             self.update(square)
             event.setDropAction(Qt.MoveAction)
             event.accept()
-            if location == QPoint(round(square.x() / piece_size), round(square.y() / piece_size)):
+            if location == QPoint(round(square.x() / piece_image_width), round(square.y() / piece_image_height)):
                 self.inPlace += 1
                 if self.inPlace == pieces_quantity:
                     self.puzzleCompleted.emit()
@@ -85,14 +93,14 @@ class PuzzleWidget(QWidget):
             self.highlightedRect = QRect()
             event.ignore()
 
-    def find_piece(self, piece_rect): # если на месте, куда игрок хочет поместить паззл, уже есть кусочек
+    def find_piece(self, piece_rect):
         try:
             return self.piece_rect_list.index(piece_rect)
         except ValueError:
             return -1
 
-    def mousePressEvent(self, event): #удерживание кнопки мыши на кусочке паззла
-        square = self.target_square(event.pos())
+    def mousePressEvent(self, event):
+        square = target_square(event.pos())
         found = self.find_piece(square)
         if found == -1:
             return
@@ -101,7 +109,7 @@ class PuzzleWidget(QWidget):
         del self.piece_locations[found]
         del self.piece_pixel_maps[found]
         del self.piece_rect_list[found]
-        if location == QPoint(round(square.x() / piece_size), round(square.y() / piece_size)):
+        if location == QPoint(round(square.x() / piece_image_width), round(square.y() / piece_image_height)):
             self.inPlace -= 1
         self.update(square)
         item_data = QByteArray()
@@ -117,8 +125,8 @@ class PuzzleWidget(QWidget):
             self.piece_locations.insert(found, location)
             self.piece_pixel_maps.insert(found, pixmap)
             self.piece_rect_list.insert(found, square)
-            self.update(self.target_square(event.pos()))
-            if location == QPoint(square.x() / piece_size, square.y() / piece_size):
+            self.update(target_square(event.pos()))
+            if location == QPoint(square.x() / piece_image_width, square.y() / piece_image_height):
                 self.inPlace += 1
 
     def paintEvent(self, event):
@@ -133,16 +141,13 @@ class PuzzleWidget(QWidget):
             painter.drawPixmap(rect, pixmap)
         painter.end()
 
-    def target_square(self, position): #игровое поле
-        return QRect(position.x() // piece_size * piece_size, position.y() // piece_size * piece_size, piece_size, piece_size)
 
-
-class PiecesList(QListWidget): #лист кусочков паззла
+class PiecesList(QListWidget):
     def __init__(self, parent=None):
         super(PiecesList, self).__init__(parent)
         self.setDragEnabled(True)
         self.setViewMode(QListView.IconMode)
-        self.setIconSize(QSize(60, 60))
+        self.setIconSize(QSize(97, 97))
         self.setSpacing(10)
         self.setAcceptDrops(True)
         self.setDropIndicatorShown(True)
@@ -173,7 +178,7 @@ class PiecesList(QListWidget): #лист кусочков паззла
         else:
             event.ignore()
 
-    def add_piece(self, pixmap, location): #кусочек паззла помещен в правильное окошко
+    def add_piece(self, pixmap, location):
         piece_item = QListWidgetItem(self)
         piece_item.setIcon(QIcon(pixmap))
         piece_item.setData(Qt.UserRole, pixmap)
@@ -199,15 +204,17 @@ class PiecesList(QListWidget): #лист кусочков паззла
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, parent=None): #окно игры
+    def __init__(self, parent=None):
         super(MainWindow, self).__init__(parent)
+        self.puzzleWidget = None
+        self.piecesList = None
         self.puzzleImage = QPixmap()
-        self.setup_menus()
-        self.setup_widgets()
+        self.setup_menu()
+        # self.setup_widgets()
         self.setSizePolicy(QSizePolicy(QSizePolicy.Fixed, QSizePolicy.Fixed))
         self.setWindowTitle('Игра "Собери паззл"')  # название игры
 
-    def setup_menus(self): #меню
+    def setup_menu(self):
         file_menu = self.menuBar().addMenu("&Файл")
         open_action = file_menu.addAction("&Открыть...")
         open_action.setShortcut("Ctrl+O")
@@ -220,28 +227,59 @@ class MainWindow(QMainWindow):
         exit_action.triggered.connect(QApplication.instance().quit)
         restart_action.triggered.connect(self.setup_puzzle)
 
-    def open_image(self, path=None): #открыть изображение
+    def open_image(self, path=None):
         if not path:
             path, _ = QFileDialog.getOpenFileName(self, "Открыть изображение", '',
-                                                  "Файлы изображений (*.png *.jpg *.bmp)")
+                                                  "Файлы изображений (*.png *.jpg *.jpeg *.bmp)")
         if path:
             new_image = QPixmap()
             if not new_image.load(path):
                 QMessageBox.warning(self, "Открыть изображение", "Изображение не может быть загружено.",
                                     QMessageBox.Cancel)
                 return
+
             self.puzzleImage = new_image
             self.setup_puzzle()
 
-    def setup_puzzle(self): #установка паззла
-        size = min(self.puzzleImage.width(), self.puzzleImage.height())  # размер минимальной стороны картинки
-        aaa = round((self.puzzleImage.width() - size) / 2)
-        bbb = round((self.puzzleImage.height() - size) / 2)
-        self.puzzleImage = self.puzzleImage.copy(aaa, bbb, size, size).scaled(puzzle_size, puzzle_size, Qt.IgnoreAspectRatio, Qt.SmoothTransformation)
+    def setup_puzzle(self):
+        global puzzle_image_width
+        global puzzle_image_height
+        global pieces_quantity
+        global piece_image_width
+        global piece_image_height
+
+        if self.puzzleImage.width() > 600 or self.puzzleImage.height() > 600:
+            if self.puzzleImage.height() > self.puzzleImage.width():
+                puzzle_image_width = round(self.puzzleImage.width() * 600 / self.puzzleImage.height())  # ширина пазла
+                puzzle_image_height = round(self.puzzleImage.height() * puzzle_image_width / self.puzzleImage.width())
+
+            if self.puzzleImage.width() > self.puzzleImage.height():
+                puzzle_image_height = round(self.puzzleImage.height() * 600 / self.puzzleImage.width())  # длина пазла
+                puzzle_image_width = round(self.puzzleImage.width() * puzzle_image_height / self.puzzleImage.height())
+        else:
+            puzzle_image_width = self.puzzleImage.width()
+            puzzle_image_height = self.puzzleImage.height()
+
+        puzzle_image_rows = 3  # количество строк
+        puzzle_image_cols = 3  # количество столбцов
+
+        pieces_quantity = puzzle_image_rows * puzzle_image_cols  # количество кусочков пазла
+
+        piece_image_width = round(puzzle_image_width / puzzle_image_cols)
+        piece_image_height = round(puzzle_image_height / puzzle_image_rows)
+
+        self.puzzleImage = self.puzzleImage.copy(self.puzzleImage.width(), self.puzzleImage.height(),
+                                                 self.puzzleImage.width(),
+                                                 self.puzzleImage.height()).scaled(puzzle_image_width,
+                                                                                   puzzle_image_height,
+                                                                                   Qt.IgnoreAspectRatio,
+                                                                                   Qt.SmoothTransformation)
+        self.setup_widgets()
         self.piecesList.clear()
-        for y in range(puzzle_rows):
-            for x in range(puzzle_cols):
-                piece_image = self.puzzleImage.copy(x * piece_size, y * piece_size, piece_size, piece_size)
+        for y in range(puzzle_image_rows):
+            for x in range(puzzle_image_cols):
+                piece_image = self.puzzleImage.copy(x * piece_image_width, y * piece_image_height,
+                                                    piece_image_width, piece_image_height)
                 self.piecesList.add_piece(piece_image, QPoint(x, y))
         random.seed(QCursor.pos().x() ^ QCursor.pos().y())
         for i in range(self.piecesList.count()):
@@ -250,17 +288,21 @@ class MainWindow(QMainWindow):
                 self.piecesList.insertItem(0, item)
         self.puzzleWidget.clear()
 
-    def setup_widgets(self): #установка виджетов
+    def setup_widgets(self):
+        print(self.puzzleImage.width(), self.puzzleImage.height())
+        print(puzzle_image_width, puzzle_image_height)
+        print(piece_image_width, piece_image_height)
+
         frame = QFrame()
         frame_layout = QHBoxLayout(frame)
         self.piecesList = PiecesList()
-        self.puzzleWidget = PuzzleWidget()
+        self.puzzleWidget = PuzzleWidget(parent=None, aaa=puzzle_image_width, bbb=puzzle_image_height)
         self.puzzleWidget.puzzleCompleted.connect(self.set_completed, Qt.QueuedConnection)
         frame_layout.addWidget(self.piecesList)
         frame_layout.addWidget(self.puzzleWidget)
         self.setCentralWidget(frame)
 
-    def set_completed(self): #паззл собран
+    def set_completed(self):
         QMessageBox.information(self, "Паззл собран.",
                                 "Поздравляю! Вы собрали паззл!\nНажмите OK, чтобы начать заново.", QMessageBox.Ok)
         self.setup_puzzle()
@@ -273,6 +315,10 @@ class MainWindow(QMainWindow):
 if __name__ == '__main__':
     app = QApplication(sys.argv)
     window = MainWindow()
-    window.open_image('images/picture_300x300.jpg')
+    # window.open_image('images/picture_300x300.jpg')
+    # window.open_image('images/picture_400x400.jpg')
+    # window.open_image('images/picture_2145x2560.jpg')
+    window.open_image('images/picture_4390x2922.jpeg')
+    # window.open_image('images/picture_4546x3026.jpeg')
     window.show()
     sys.exit(app.exec_())
